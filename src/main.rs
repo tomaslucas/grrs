@@ -1,10 +1,9 @@
 #![allow(unused)]
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Ok, Result};
 use clap::Parser;
 use log::{info, trace, warn};
 use std::fs::File;
-use std::io::{BufRead, BufReader};
 
 #[derive(Parser, Debug)]
 struct Cli {
@@ -14,21 +13,38 @@ struct Cli {
     path: std::path::PathBuf,
 }
 
+fn find_matches(content: &str, pattern: &str, mut writer: impl std::io::Write) -> Result<()> {
+    for line in content.lines() {
+        if line.contains(pattern) {
+            writeln!(writer, "{}", line)
+                .with_context(|| format!("Failed to write line: {}", line))?;
+        }
+    }
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let args = Cli::parse();
     env_logger::Builder::new()
         .filter_level(args.verbose.log_level_filter())
         .init();
+
     info!("Verify if we can open the file `{}`", args.path.display());
-    let content = File::open(&args.path)
+
+    let content = std::fs::read_to_string(&args.path)
         .with_context(|| format!("Could not read file `{}`", &args.path.display()))?;
-    trace!("starting up");
-    let reader = BufReader::new(content);
-    info!("Display lines warn {:?}", reader);
-    for line in reader.lines().map(|l| l.unwrap()) {
-        if line.contains(&args.pattern) {
-            println!("{}", line);
-        }
-    }
+
+    info!("Display the content of the file: {:?}", content);
+
+    find_matches(&content, &args.pattern, &mut std::io::stdout())
+        .with_context(|| "Failed to find matches")?;
+
     Ok(())
+}
+
+#[test]
+fn find_a_match() {
+    let mut result = Vec::new();
+    find_matches("lorem ipsum\ndolor sit amet", "lorem", &mut result);
+    assert_eq!(result, b"lorem ipsum\n");
 }
